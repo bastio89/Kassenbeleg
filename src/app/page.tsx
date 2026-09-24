@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { AutoRefresh } from "@/components/AutoRefresh";
+import { BackupWarning } from "@/components/BackupNotice";
 import { CategoryBars } from "@/components/CategoryBars";
 import { ReceiptRow } from "@/components/ReceiptRow";
 import { UploadBox } from "@/components/UploadBox";
+import { backupStatus } from "@/lib/backup";
 import { dateDe, eur, monthName, monthRange, shiftMonth, todayIso } from "@/lib/format";
 import { kpis, listReceipts, queueStatus, spendingByCategory, warranties } from "@/lib/queries";
 
@@ -10,13 +12,14 @@ export default async function Home() {
   const month = todayIso().slice(0, 7);
   const range = monthRange(month);
   const prevRange = monthRange(shiftMonth(month, -1));
-  const [current, previous, cats, recent, status, expiring] = await Promise.all([
+  const [current, previous, cats, recent, status, expiring, backup] = await Promise.all([
     kpis(range),
     kpis(prevRange),
     spendingByCategory(range),
     listReceipts({ limit: 6 }),
     queueStatus(),
     warranties("expiring", 60),
+    backupStatus(),
   ]);
   const busy = status.pending + status.processing > 0;
   const diff = previous.total ? ((current.total - previous.total) / previous.total) * 100 : null;
@@ -44,6 +47,8 @@ export default async function Home() {
           – ansehen →
         </Link>
       )}
+
+      <BackupWarning status={backup} hasReceipts={recent.total > 0} />
 
       <div className="grid grid-kpi">
         <div className="card kpi">

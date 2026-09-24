@@ -158,7 +158,7 @@ label.field input, label.field select { width: 100%; }
 .badge.good { color: var(--good); }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
 
-.alert { padding: 12px 14px; border-radius: 10px; background: var(--warn-bg); color: var(--warn-ink); }
+.alert { padding: 12px 14px; border-radius: 10px; background: var(--warn-bg); color: var(--warn-ink); overflow-wrap: anywhere; }
 .alert.bad { background: var(--bad-bg); color: var(--bad); }
 
 table { width: 100%; border-collapse: collapse; }

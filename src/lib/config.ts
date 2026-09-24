@@ -16,6 +16,8 @@ export type AiMode = "ocr" | "vision";
 export const config = {
   databaseUrl: env("DATABASE_URL", "postgres://kassenbeleg:kassenbeleg@localhost:5432/kassenbeleg"),
   dataDir: env("DATA_DIR", "./data"),
+  // Hier schreibt der Backup-Dienst seine status.json hin
+  backupDir: env("BACKUP_DIR", "./backups"),
   appUrl: env("APP_URL").replace(/\/$/, ""),
   timezone: env("TZ", "Europe/Berlin"),
 

@@ -11,7 +11,8 @@ Selbst gehostete Belegverwaltung für den Haushalt: **Kassenbon fotografieren �
 - 🛡️ **Garantie-Archiv**: Gewährleistung wird für langlebige Artikel automatisch berechnet, Übersicht „läuft bald ab“, **Erinnerung per Telegram**
 - ♊ **Duplikaterkennung**: Derselbe Bon zweimal fotografiert wird erkannt und nicht doppelt gezählt
 - 🔍 **Volltextsuche** über Geschäft, Artikel, Notizen und den kompletten erkannten Belegtext – Original jederzeit herunterladbar
-- 🐘 Alles in **PostgreSQL**, Originaldateien unverändert auf der Festplatte, **tägliches Backup**
+- 🐘 Alles in **PostgreSQL**, Originaldateien unverändert auf der Festplatte
+- 💾 **Tägliche Sicherung**, optional **verschlüsselt außer Haus** (NAS, USB-Platte, Cloud) – mit Warnung in App und Telegram, falls sie fehlschlägt
 
 ---
 
@@ -109,7 +110,11 @@ docker compose logs -f worker
 
 Wenn `Modell "qwen2.5:3b" ist bereit.` erscheint, ist alles fertig. Die App läuft jetzt unter **http://&lt;IP-des-Servers&gt;:3000**.
 
-Unter **Einstellungen** in der App siehst du, ob KI und Modell bereit sind.
+Unter **Einstellungen** in der App siehst du, ob KI und Modell bereit sind. Zusätzlich gibt es einen Selbsttest für Texterkennung, PDF, iPhone-Fotos und KI:
+
+```bash
+docker compose exec worker npm run selftest -- --ki
+```
 
 ## Zugriff vom Handy – sicher mit Tailscale
 
@@ -133,9 +138,15 @@ Die App hat bewusst **keinen Login**. Damit trotzdem niemand Fremdes an eure Bel
    ```bash
    sudo tailscale serve --bg 3000
    ```
-   Die App ist jetzt unter `https://<servername>.<tailnet>.ts.net` erreichbar – **nur** für Geräte in eurem Tailscale-Netz. Diese Adresse in `.env` bei `APP_URL` eintragen und `docker compose up -d` ausführen.
-4. **Auf beiden Handys** die Tailscale-App installieren (App Store / Play Store) und mit **demselben Konto** anmelden. Deine Frau kannst du alternativ unter *Admin → Users → Invite* einladen.
-5. Adresse im Handy-Browser öffnen und **als App installieren**:
+   Die App ist jetzt unter `https://<servername>.<tailnet>.ts.net` erreichbar – **nur** für Geräte in eurem Tailscale-Netz.
+4. **Heimnetz-Zugang schließen:** In `.env` eintragen
+   ```env
+   APP_URL=https://<servername>.<tailnet>.ts.net
+   APP_BIND=127.0.0.1
+   ```
+   und `docker compose up -d` ausführen. Danach ist die App **nicht mehr** unter `http://<IP>:3000` im WLAN erreichbar – Gäste im WLAN oder unsichere Smart-Home-Geräte kommen nicht mehr an eure Belege. Zugriff nur noch über Tailscale (auch zu Hause).
+5. **Auf beiden Handys** die Tailscale-App installieren (App Store / Play Store) und mit **demselben Konto** anmelden. Deine Frau kannst du alternativ unter *Admin → Users → Invite* einladen.
+6. Adresse im Handy-Browser öffnen und **als App installieren**:
    - **iPhone:** Safari → Teilen-Symbol → „Zum Home-Bildschirm“
    - **Android:** Chrome → Menü ⋮ → „App installieren“ – danach erscheint „Kassenbelege“ auch im **Teilen-Menü** (Galerie, Mail-Anhänge, Dateimanager)
 
@@ -243,14 +254,59 @@ Alle Daten liegen im Projektordner:
 | `data/ollama/` | KI-Modell (kann neu geladen werden) |
 | `backups/` | tägliche Datenbank-Sicherung (14 Tage) |
 
-**Sichern:** die Ordner `data/files/` und `backups/` regelmäßig auf ein anderes Gerät kopieren (z. B. NAS, externe Platte, Cloud).
+Der Dienst `backup` sichert jede Nacht um 3 Uhr die Datenbank nach `backups/`. **Das liegt aber auf derselben Festplatte** – fällt sie aus, sind alle Belege weg. Deshalb unbedingt die **Sicherung außer Haus** einrichten. Sie sichert Datenbank **und** Originalbelege verschlüsselt mit [restic](https://restic.net) (7 tägliche, 8 wöchentliche, 24 monatliche Stände; nur Änderungen werden übertragen).
 
-**Wiederherstellen** auf einem neuen Server:
+Den Status siehst du unter **Einstellungen → Sicherung**. Schlägt eine Sicherung fehl oder ist die letzte älter als 2 Tage, warnt die Übersicht – und per Telegram kommt eine Nachricht.
+
+### Sicherung außer Haus einrichten
+
+In `.env` ein Ziel und ein Passwort eintragen. **Das Passwort gut aufbewahren** (z. B. im Passwortmanager) – ohne es ist die Sicherung nicht lesbar.
+
+**Variante A – NAS oder USB-Platte** (am Server eingehängt, z. B. unter `/mnt/nas`):
+
+```env
+OFFSITE_PATH=/mnt/nas/kassenbeleg-backup
+RESTIC_REPOSITORY=/offsite/kassenbeleg
+RESTIC_PASSWORD=ein-langes-geheimes-passwort
+```
+
+**Variante B – Cloud-Speicher** (z. B. Backblaze B2, ca. 6 $/TB im Monat – für Belege reichen meist ein paar Cent):
+
+```env
+RESTIC_REPOSITORY=s3:https://s3.eu-central-003.backblazeb2.com/mein-bucket-name
+AWS_ACCESS_KEY_ID=<keyID>
+AWS_SECRET_ACCESS_KEY=<applicationKey>
+RESTIC_PASSWORD=ein-langes-geheimes-passwort
+```
+
+Dann übernehmen und direkt einmal sichern:
 
 ```bash
-# Projekt klonen, .env zurückkopieren, data/files zurückkopieren, dann:
-docker compose up -d db
+docker compose up -d --build
+docker compose run --rm backup now
+```
+
+Am Ende muss `Sicherung erfolgreich.` stehen. Weitere Ziele (SFTP, andere S3-Anbieter …) siehe [restic-Dokumentation](https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html).
+
+### Wiederherstellen
+
+**Aus der lokalen Sicherung** (Server läuft noch, Datenbank beschädigt):
+
+```bash
+docker compose stop app worker
 gunzip -c backups/kassenbeleg-JJJJ-MM-TT.sql.gz | docker compose exec -T db psql -U kassenbeleg kassenbeleg
+docker compose up -d
+```
+
+**Aus der Sicherung außer Haus** (neuer Server): Projekt klonen, `.env` mit denselben `RESTIC_*`-Werten anlegen, dann:
+
+```bash
+docker compose build backup
+# Belege und Datenbank-Dumps nach ./restore holen
+docker compose run --rm --no-deps -v ./restore:/restore --entrypoint restic backup restore latest --target /restore
+mkdir -p data && cp -a restore/data/files data/files
+docker compose up -d db
+gunzip -c $(ls restore/backups/kassenbeleg-*.sql.gz | tail -1) | docker compose exec -T db psql -U kassenbeleg kassenbeleg
 docker compose up -d
 ```
 
@@ -268,10 +324,12 @@ Datenbank-Änderungen werden beim Start automatisch eingespielt.
 
 | Problem | Lösung |
 |---|---|
+| Irgendetwas stimmt nicht | `docker compose exec worker npm run selftest -- --ki` prüft Texterkennung, PDF, HEIC und KI |
 | Beleg bleibt auf „Wartet“ | `docker compose logs -f worker` – lädt das Modell noch? |
 | „Ollama nicht erreichbar“ | `docker compose ps` – läuft der Dienst `ollama`? `docker compose restart ollama worker` |
 | Beleg „fehlgeschlagen“ | Detailseite → „Erneut versuchen“. Das Original bleibt gespeichert und über den erkannten Text durchsuchbar. |
 | Artikel/Summe falsch | Foto gerade, hell und scharf aufnehmen; ganzer Bon im Bild. Oder `AI_FALLBACK=openrouter` setzen. |
+| Warnung „Sicherung fehlgeschlagen“ | Meldung unter Einstellungen → Sicherung lesen; `docker compose logs backup`; manuell testen mit `docker compose run --rm backup now` |
 | Rechner wird sehr langsam | kleineres Modell (`qwen2.5:1.5b`) oder OpenRouter nutzen |
 | Telegram: „Kein Zugriff“ | eigene ID (`/id`) in `TELEGRAM_ALLOWED_USER_IDS` eintragen, `docker compose up -d` |
 | App lässt sich auf Android nicht installieren | HTTPS nötig → `tailscale serve` (siehe oben) |
@@ -293,6 +351,8 @@ src/
   lib/            Datenbank, KI, OCR, Auswertungen
   worker/         Hintergrund-Verarbeitung & Telegram-Bot
 migrations/       SQL-Schema und Standard-Kategorien
+docker/backup/    Sicherungsdienst (pg_dump + restic)
+fixtures/         Testbelege für Selbsttest und CI
 ```
 
 Lokal entwickeln (PostgreSQL, Tesseract, Poppler, libheif-examples und Ollama installiert):

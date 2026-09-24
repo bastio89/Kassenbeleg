@@ -53,8 +53,10 @@ jobs:
           cp .env.example .env
           sed -i 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci1234/' .env
           echo "OLLAMA_AUTO_PULL=false" >> .env
-      - name: Image bauen
-        run: docker compose build app
+          # Sicherung außer Haus in einen lokalen Ordner testen
+          sed -i 's#^RESTIC_REPOSITORY=.*#RESTIC_REPOSITORY=/offsite/kassenbeleg#; s#^RESTIC_PASSWORD=.*#RESTIC_PASSWORD=ci-test-passwort#' .env
+      - name: Images bauen
+        run: docker compose build app backup
       - name: Datenbank und App starten
         run: docker compose up -d --no-deps db app
       - name: Auf App warten
@@ -76,6 +78,22 @@ jobs:
           ls -R data/files | head
       - name: Selbsttest im Container (Tesseract, PDF, HEIC)
         run: docker compose run --rm --no-deps worker npm run selftest
+      - name: Sicherung (Dump + restic) im Container
+        run: |
+          docker compose run --rm backup now
+          cat backups/status.json
+          grep -q '"status":"ok"' backups/status.json
+          grep -q '"offsite":true' backups/status.json
+          ls -la backups offsite/kassenbeleg
+      - name: Wiederherstellung wie in der README
+        run: |
+          docker compose run --rm --no-deps -v ./restore:/restore --entrypoint restic backup restore latest --target /restore
+          diff -r data/files restore/data/files
+          ls restore/backups/kassenbeleg-*.sql.gz
+          gunzip -c $(ls restore/backups/kassenbeleg-*.sql.gz | tail -1) | grep -q "CREATE TABLE public.receipts"
+          echo "Wiederherstellung vollständig"
+      - name: Sicherungsstatus in der App
+        run: curl -fsS http://localhost:3000/einstellungen | grep -q "verschlüsselt (restic)"
       - name: Logs bei Fehler
         if: failure()
         run: docker compose logs

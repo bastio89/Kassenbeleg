@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { BackupDetails } from "@/components/BackupNotice";
+import { backupStatus } from "@/lib/backup";
 import { hasModel, ollamaStatus } from "@/lib/ai/ollama";
 import { config, effectiveMode } from "@/lib/config";
 import { queueStatus } from "@/lib/queries";
@@ -12,7 +14,7 @@ function Status({ ok, children }: { ok: boolean; children: React.ReactNode }) {
 }
 
 export default async function SettingsPage() {
-  const [queue, ollama] = await Promise.all([queueStatus(), ollamaStatus()]);
+  const [queue, ollama, backup] = await Promise.all([queueStatus(), ollamaStatus(), backupStatus()]);
   const mode = effectiveMode(config.ai.provider);
   const model = mode === "vision" ? config.ai.ollama.visionModel : config.ai.ollama.model;
   const usesOllama = config.ai.provider === "ollama";
@@ -99,6 +101,11 @@ export default async function SettingsPage() {
             {queue.failed} fehlgeschlagen
           </Link>
         </div>
+      </section>
+
+      <section className="card" id="sicherung">
+        <h2>💾 Sicherung</h2>
+        <BackupDetails status={backup} />
       </section>
 
       <section className="card">

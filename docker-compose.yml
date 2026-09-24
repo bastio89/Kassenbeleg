@@ -3,7 +3,7 @@
 #   2. docker compose up -d
 #   3. http://<server>:3000 öffnen
 #
-# Alle Daten liegen im Ordner ./data (Datenbank, Originalbelege) – diesen Ordner sichern!
+# Alle Daten liegen in ./data (Datenbank, Originalbelege), Sicherungen in ./backups.
 
 x-app: &app
   build: .
@@ -14,8 +14,10 @@ x-app: &app
     DATABASE_URL: postgres://kassenbeleg:${POSTGRES_PASSWORD:-kassenbeleg}@db:5432/kassenbeleg
     OLLAMA_URL: http://ollama:11434
     DATA_DIR: /data
+    BACKUP_DIR: /backups
   volumes:
     - ./data/files:/data/files
+    - ./backups:/backups:ro
   depends_on:
     db:
       condition: service_healthy
@@ -24,7 +26,8 @@ services:
   app:
     <<: *app
     ports:
-      - "${APP_PORT:-3000}:3000"
+      # APP_BIND=127.0.0.1 → nur über Tailscale (tailscale serve) erreichbar, nicht im WLAN
+      - "${APP_BIND:-0.0.0.0}:${APP_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
@@ -80,23 +83,21 @@ services:
     #           count: all
     #           capabilities: [gpu]
 
-  # Tägliche Datenbank-Sicherung nach ./backups (14 Tage aufbewahrt)
+  # Tägliche Sicherung: Datenbank-Dump nach ./backups (14 Tage) und – wenn RESTIC_REPOSITORY
+  # gesetzt ist – verschlüsselt außer Haus (NAS, USB-Platte, S3, Backblaze …). Siehe README.
   backup:
-    image: postgres:16-alpine
+    build: docker/backup
+    image: kassenbeleg-backup:latest
     restart: unless-stopped
+    env_file: .env
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:-kassenbeleg}
+      TZ: Europe/Berlin
     volumes:
       - ./backups:/backups
+      - ./data/files:/data/files:ro
+      # Ziel für RESTIC_REPOSITORY=/offsite/kassenbeleg (z. B. eingehängtes NAS oder USB-Platte)
+      - ${OFFSITE_PATH:-./offsite}:/offsite
     depends_on:
       db:
         condition: service_healthy
-    entrypoint:
-      - sh
-      - -c
-      - |
-        while true; do
-          pg_dump -h db -U kassenbeleg kassenbeleg | gzip > /backups/kassenbeleg-$$(date +%F).sql.gz
-          find /backups -name 'kassenbeleg-*.sql.gz' -mtime +14 -delete
-          sleep 86400
-        done
