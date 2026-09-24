@@ -45,6 +45,7 @@ export default async function ReceiptPage({ params }: PageProps<"/belege/[id]">)
   const itemSum = items.reduce((s, i) => s + Number(i.total_price), 0);
   const today = todayIso();
   const isPdf = r.mime_type === "application/pdf";
+  const isHeic = r.mime_type === "image/heic" || r.mime_type === "image/heif";
 
   return (
     <div className="stack">
@@ -115,9 +116,10 @@ export default async function ReceiptPage({ params }: PageProps<"/belege/[id]">)
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={`/api/files/${r.id}?type=preview`} alt="Beleg" />
             </a>
-          ) : isPdf ? (
-            <a href={`/api/files/${r.id}`} target="_blank" rel="noreferrer" className="empty" style={{ display: "block" }}>
-              📄 PDF öffnen
+          ) : isPdf || isHeic ? (
+            // HEIC können die meisten Browser nicht anzeigen – bis die Vorschau erzeugt ist, nur Download
+            <a href={`/api/files/${r.id}${isHeic ? "?download=1" : ""}`} target="_blank" rel="noreferrer" className="empty" style={{ display: "block" }}>
+              {isPdf ? "📄 PDF öffnen" : "📷 HEIC-Foto herunterladen"}
             </a>
           ) : (
             // eslint-disable-next-line @next/next/no-img-element

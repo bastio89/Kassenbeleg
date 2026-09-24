@@ -12,9 +12,9 @@ RUN npm run build && npm prune --omit=dev
 
 # ---------- Laufzeit ----------
 FROM node:22-bookworm-slim
-# Tesseract (Texterkennung, Deutsch + Englisch) und Poppler (PDF) – laufen komplett lokal
+# Tesseract (Texterkennung, Deutsch + Englisch), Poppler (PDF) und libheif (iPhone-Fotos) – laufen komplett lokal
 RUN apt-get update \
- && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng poppler-utils ca-certificates tzdata \
+ && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng poppler-utils libheif-examples ca-certificates tzdata \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production \

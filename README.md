@@ -3,7 +3,7 @@
 Selbst gehostete Belegverwaltung für den Haushalt: **Kassenbon fotografieren → KI liest ihn aus → alles ist kategorisiert, durchsuchbar und für den Garantiefall archiviert.**
 
 - 📷 **Erfassen** per Handy-Kamera (Web-App/PWA), Datei-Upload, „Teilen“-Menü (Android) oder **Telegram-Bot**
-- 📄 Fotos **und** digitale **PDF-Rechnungen** (Online-Shops)
+- 📄 Fotos (JPG, PNG, WebP, **iPhone-HEIC**) **und** digitale **PDF-Rechnungen** (Online-Shops)
 - 🤖 **Lokale KI** (Ollama, läuft auch auf 8-GB-Rechnern) – optional **OpenRouter** als Cloud-Alternative/Fallback
 - 🛒 **Jeder Artikel einzeln** erfasst und **automatisch kategorisiert** (erweiterbare Kategorien mit Unterkategorien)
 - 🧠 **Lernt mit**: Korrigierst du eine Kategorie, wird der Artikel künftig automatisch richtig zugeordnet
@@ -273,7 +273,6 @@ Datenbank-Änderungen werden beim Start automatisch eingespielt.
 | Beleg „fehlgeschlagen“ | Detailseite → „Erneut versuchen“. Das Original bleibt gespeichert und über den erkannten Text durchsuchbar. |
 | Artikel/Summe falsch | Foto gerade, hell und scharf aufnehmen; ganzer Bon im Bild. Oder `AI_FALLBACK=openrouter` setzen. |
 | Rechner wird sehr langsam | kleineres Modell (`qwen2.5:1.5b`) oder OpenRouter nutzen |
-| Fehler bei iPhone-Fotos (HEIC) | In der Web-App werden Fotos automatisch als JPG hochgeladen. Bei Telegram als „Foto“ statt als Datei senden oder am iPhone Einstellungen → Kamera → Formate → „Maximale Kompatibilität“ |
 | Telegram: „Kein Zugriff“ | eigene ID (`/id`) in `TELEGRAM_ALLOWED_USER_IDS` eintragen, `docker compose up -d` |
 | App lässt sich auf Android nicht installieren | HTTPS nötig → `tailscale serve` (siehe oben) |
 
@@ -284,7 +283,7 @@ Logs aller Dienste: `docker compose logs -f`
 - **Next.js 16** (App Router, TypeScript) – Weboberfläche, API, Server Actions
 - **PostgreSQL 16** – Belege, Positionen, Kategorien, gelernte Regeln (Suche mit `pg_trgm`)
 - **Worker** (Node.js) – Verarbeitungswarteschlange in der Datenbank (`FOR UPDATE SKIP LOCKED`, sofortiges Aufwecken per `LISTEN/NOTIFY`), Telegram-Bot (grammY), Garantie-Erinnerungen
-- **Tesseract** + **Poppler** – Texterkennung und PDF-Verarbeitung, lokal
+- **Tesseract** + **Poppler** + **libheif** – Texterkennung, PDF-Verarbeitung und iPhone-Fotos (HEIC), lokal
 - **Ollama** / **OpenRouter** – Sprachmodelle mit Structured Outputs (JSON-Schema)
 
 ```
@@ -296,7 +295,7 @@ src/
 migrations/       SQL-Schema und Standard-Kategorien
 ```
 
-Lokal entwickeln (PostgreSQL, Tesseract, Poppler und Ollama installiert):
+Lokal entwickeln (PostgreSQL, Tesseract, Poppler, libheif-examples und Ollama installiert):
 
 ```bash
 npm install

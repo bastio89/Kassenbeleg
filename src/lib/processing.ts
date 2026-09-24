@@ -1,10 +1,10 @@
-import sharp from "sharp";
 import { categorizeItems, extractReceipt, type AiContext } from "./ai";
 import type { Extraction } from "./ai/types";
 import { buildLookup, getCategories, resolveCategoryPath } from "./categories";
 import { effectiveMode, config } from "./config";
 import { checkDuplicate } from "./duplicates";
 import { sql } from "./db";
+import { isHeic, heicToJpeg } from "./ocr/heic";
 import { makePreview, prepareForVision } from "./ocr/image";
 import { pdfText, pdfToImages } from "./ocr/pdf";
 import { ocrImage } from "./ocr/tesseract";
@@ -38,14 +38,8 @@ interface Prepared {
 
 /** Texterkennung bzw. Textextraktion für Foto oder PDF. */
 async function prepare(receipt: ReceiptRow, file: Buffer): Promise<Prepared> {
-  if (receipt.mime_type === "image/heic" || receipt.mime_type === "image/heif") {
-    const readable = await sharp(file).metadata().then(() => true, () => false);
-    if (!readable) {
-      throw new Error(
-        "HEIC-Fotos können nicht gelesen werden. Bitte als JPG senden (iPhone: Einstellungen → Kamera → Formate → „Maximale Kompatibilität“).",
-      );
-    }
-  }
+  // iPhone-Fotos (HEIC) zuerst in JPEG umwandeln – danach wie jedes andere Foto
+  if (isHeic(receipt.mime_type)) file = await heicToJpeg(file);
   const wantVision = effectiveMode(config.ai.provider) === "vision" || config.ai.fallback === "openrouter";
   if (receipt.mime_type === "application/pdf") {
     const embedded = await pdfText(file).catch(() => "");
