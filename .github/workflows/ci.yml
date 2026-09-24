@@ -22,7 +22,7 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
       DATABASE_URL: postgres://kassenbeleg:kassenbeleg@localhost:5432/kassenbeleg
-      DATA_DIR: ${{ runner.temp }}/data
+      DATA_DIR: ./data
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4
