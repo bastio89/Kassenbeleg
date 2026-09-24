@@ -9,6 +9,7 @@ Selbst gehostete Belegverwaltung für den Haushalt: **Kassenbon fotografieren �
 - 🧠 **Lernt mit**: Korrigierst du eine Kategorie, wird der Artikel künftig automatisch richtig zugeordnet
 - 📊 **Auswertungen**: Monat/Jahr/Zeitraum, Verlauf über 12 Monate, Kategorien & Unterkategorien, Top-Geschäfte, teuerste Artikel, Wochentage, **CSV-Export** (Excel)
 - 🛡️ **Garantie-Archiv**: Gewährleistung wird für langlebige Artikel automatisch berechnet, Übersicht „läuft bald ab“, **Erinnerung per Telegram**
+- ♊ **Duplikaterkennung**: Derselbe Bon zweimal fotografiert wird erkannt und nicht doppelt gezählt
 - 🔍 **Volltextsuche** über Geschäft, Artikel, Notizen und den kompletten erkannten Belegtext – Original jederzeit herunterladbar
 - 🐘 Alles in **PostgreSQL**, Originaldateien unverändert auf der Festplatte, **tägliches Backup**
 
@@ -222,6 +223,10 @@ Das Modell „sieht“ dann das Foto selbst. Braucht deutlich mehr RAM und Reche
 - **Auswertung:** Monat, Jahr, 12 Monate oder freier Zeitraum; CSV-Export für Excel.
 - **Garantie:** läuft bald ab / aktiv / abgelaufen, jeweils mit Download des Belegs.
 - **Einstellungen → Kategorien:** Kategorien und Unterkategorien anlegen, umbenennen, löschen (Artikel werden verschoben), Standard-Garantie je Kategorie, gelernte Zuordnungen verwalten.
+
+### Doppelte Belege
+
+Wird derselbe Bon zweimal erfasst (z. B. von dir per Telegram und von deiner Frau in der Web-App), erkennt die App das am Inhalt: gleiches Datum, gleicher Betrag, ähnlicher Geschäftsname und – falls erkannt – dieselbe Uhrzeit (±2 Minuten), sonst gleiche Artikelanzahl. Das zweite Exemplar wird **nicht gelöscht**, sondern als „Duplikat“ markiert und in Auswertungen und Garantien nicht mitgezählt. Auf der Belegseite bzw. per Telegram-Button entscheidest du: „Duplikat löschen“ oder „Kein Duplikat – mitzählen“ (z. B. zweimal derselbe Kaffee am selben Tag ohne erkennbare Uhrzeit).
 
 ### Garantie-Logik
 
