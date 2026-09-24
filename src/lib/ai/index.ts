@@ -22,16 +22,19 @@ export interface AiContext {
 }
 
 /** Reihenfolge der Anbieter: primär, dann ggf. Fallback. */
-function providerChain(): LlmClient[] {
-  const chain = [clients[config.ai.provider] ?? ollama];
+function providerChain(primary: AiProvider = config.ai.provider): LlmClient[] {
+  const chain = [clients[primary] ?? ollama];
   const fb = config.ai.fallback;
   if (fb && fb !== chain[0].provider && clients[fb]?.isConfigured()) chain.push(clients[fb]);
   return chain;
 }
 
-async function withFallback<T>(fn: (client: LlmClient) => Promise<T>): Promise<{ result: T; client: LlmClient }> {
+export async function withFallback<T>(
+  fn: (client: LlmClient) => Promise<T>,
+  primary?: AiProvider,
+): Promise<{ result: T; client: LlmClient }> {
   const errors: string[] = [];
-  for (const client of providerChain()) {
+  for (const client of providerChain(primary)) {
     try {
       return { result: await fn(client), client };
     } catch (e) {

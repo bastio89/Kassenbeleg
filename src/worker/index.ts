@@ -98,6 +98,7 @@ async function main(): Promise<void> {
   bot = createBot();
   if (bot) {
     await bot.api.setMyCommands([
+      { command: "frage", description: "Frage zu euren Ausgaben stellen" },
       { command: "suche", description: "Belege durchsuchen" },
       { command: "letzte", description: "Letzte Belege" },
       { command: "monat", description: "Ausgaben im aktuellen Monat" },

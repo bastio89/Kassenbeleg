@@ -26,6 +26,9 @@ export const config = {
     // "ocr": Tesseract liest Text, das Sprachmodell strukturiert ihn (sparsam, ideal für 8 GB RAM)
     // "vision": das Modell bekommt direkt das Bild (braucht ein Vision-Modell)
     mode: env("AI_MODE") as AiMode | "",
+    // Anbieter für Fragen in normaler Sprache (leer = wie AI_PROVIDER). Größere Cloud-Modelle
+    // verstehen freie Fragen deutlich besser als ein kleines lokales Modell.
+    askProvider: env("ASK_PROVIDER") as AiProvider | "",
     // Fallback-Anbieter, falls der primäre fehlschlägt (z. B. "openrouter"); leer = keiner
     fallback: env("AI_FALLBACK") as AiProvider | "",
     timeoutMs: int("AI_TIMEOUT_SECONDS", 600) * 1000,

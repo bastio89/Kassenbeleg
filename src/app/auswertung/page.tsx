@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AskBox } from "@/components/AskBox";
 import { CategoryBars } from "@/components/CategoryBars";
 import { MonthlyChart, SimpleBarChart } from "@/components/Charts";
 import { dateDe, eur, monthName, monthRange, shiftMonth, todayIso } from "@/lib/format";
@@ -70,6 +71,8 @@ export default async function AnalysisPage({ searchParams }: PageProps<"/auswert
           ⬇️ CSV-Export
         </a>
       </div>
+
+      <AskBox />
 
       <div className="spread">
         <div className="tabs">

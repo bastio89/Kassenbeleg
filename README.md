@@ -7,6 +7,7 @@ Selbst gehostete Belegverwaltung für den Haushalt: **Kassenbon fotografieren �
 - 🤖 **Lokale KI** (Ollama, läuft auch auf 8-GB-Rechnern) – optional **OpenRouter** als Cloud-Alternative/Fallback
 - 🛒 **Jeder Artikel einzeln** erfasst und **automatisch kategorisiert** (erweiterbare Kategorien mit Unterkategorien)
 - 🧠 **Lernt mit**: Korrigierst du eine Kategorie, wird der Artikel künftig automatisch richtig zugeordnet
+- 💬 **Fragen in normaler Sprache**: „Wie viel haben wir dieses Jahr für Kaffee ausgegeben?“ – in der Web-App und per Telegram
 - 📊 **Auswertungen**: Monat/Jahr/Zeitraum, Verlauf über 12 Monate, Kategorien & Unterkategorien, Top-Geschäfte, teuerste Artikel, Wochentage, **CSV-Export** (Excel)
 - 🛡️ **Garantie-Archiv**: Gewährleistung wird für langlebige Artikel automatisch berechnet, Übersicht „läuft bald ab“, **Erinnerung per Telegram**
 - ♊ **Duplikaterkennung**: Derselbe Bon zweimal fotografiert wird erkannt und nicht doppelt gezählt
@@ -166,6 +167,7 @@ Nur diese IDs dürfen den Bot benutzen – alle anderen werden abgewiesen.
 | Befehl | Funktion |
 |---|---|
 | Foto oder PDF senden | Beleg erfassen (Antwort mit Zusammenfassung, sobald ausgewertet) |
+| „Wie viel haben wir dieses Jahr für Kaffee ausgegeben?“ oder `/frage …` | Frage zu euren Ausgaben beantworten |
 | `/suche Waschmaschine` oder einfach `Waschmaschine` | Belege finden, Original per Knopfdruck |
 | `/letzte` | Letzte Belege |
 | `/monat` | Ausgaben im aktuellen Monat nach Kategorie |
@@ -238,6 +240,23 @@ Das Modell „sieht“ dann das Foto selbst. Braucht deutlich mehr RAM und Reche
 ### Doppelte Belege
 
 Wird derselbe Bon zweimal erfasst (z. B. von dir per Telegram und von deiner Frau in der Web-App), erkennt die App das am Inhalt: gleiches Datum, gleicher Betrag, ähnlicher Geschäftsname und – falls erkannt – dieselbe Uhrzeit (±2 Minuten), sonst gleiche Artikelanzahl. Das zweite Exemplar wird **nicht gelöscht**, sondern als „Duplikat“ markiert und in Auswertungen und Garantien nicht mitgezählt. Auf der Belegseite bzw. per Telegram-Button entscheidest du: „Duplikat löschen“ oder „Kein Duplikat – mitzählen“ (z. B. zweimal derselbe Kaffee am selben Tag ohne erkennbare Uhrzeit).
+
+### Fragen in normaler Sprache
+
+Auf der Seite **Auswertung** (und per Telegram) könnt ihr einfach fragen, zum Beispiel:
+
+- „Wie viel haben wir dieses Jahr für Kaffee ausgegeben?“
+- „Was haben wir im August für Essen gezahlt?“
+- „Wie oft waren wir letzten Monat bei Lidl?“
+- „Wann haben wir den Fernseher gekauft?“ (mit Link zum Beleg)
+- „Wofür geben wir am meisten aus?“ / „In welchem Monat haben wir am meisten ausgegeben?“
+- „Wie viel geben wir im Schnitt pro Monat für Restaurants aus?“
+
+**So funktioniert es:** Die KI schreibt keine Datenbankbefehle, sondern füllt nur einen festen Abfrageplan aus (Was? Zeitraum? Suchbegriffe? Kategorie? Geschäft? Aufteilung?). Die eigentliche Abfrage baut die App selbst – Fragen können deshalb nie etwas verändern oder löschen. Zeitangaben wie „gestern“, „im März 2025“ oder „pro Monat“ werden zusätzlich per festen Regeln erkannt. Unter jeder Antwort steht **„Verstanden als: …“** – so seht ihr sofort, falls eine Frage falsch interpretiert wurde.
+
+Mit dem lokalen Modell `qwen2.5:3b` wurden in meinem Test 19 von 20 typischen Fragen richtig verstanden, Antwortzeit ca. 5–10 Sekunden. Wer freiere Formulierungen braucht, setzt `ASK_PROVIDER=openrouter` – dann geht nur die Frage (nicht eure Belegdaten) an das Cloud-Modell.
+
+**Grenzen:** Beantwortet werden Summen, Anzahl, Durchschnitt pro Monat, Artikel- und Beleglisten sowie Aufteilungen nach Kategorie, Geschäft, Monat, Artikel oder Wochentag. Anlässe wie „im Urlaub“ kennt die App nicht – dafür den Zeitraum nennen („vom 1. bis 14. August“).
 
 ### Garantie-Logik
 
@@ -366,5 +385,5 @@ npm run worker     # Verarbeitung + Telegram
 npm test           # Unit-Tests
 ```
 
-`src/scripts/eval-categories.ts` misst, wie gut ein Modell Artikel kategorisiert:
-`OLLAMA_MODEL=qwen2.5:3b npx tsx src/scripts/eval-categories.ts`
+`src/scripts/eval-categories.ts` misst, wie gut ein Modell Artikel kategorisiert, `src/scripts/eval-ask.ts`, wie gut es Fragen versteht:
+`OLLAMA_MODEL=qwen2.5:3b npx tsx src/scripts/eval-ask.ts`

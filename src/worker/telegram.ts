@@ -1,4 +1,5 @@
 import { Bot, InlineKeyboard, InputFile, type Context } from "grammy";
+import { answerText, ask } from "../lib/ask";
 import { config } from "../lib/config";
 import { sql } from "../lib/db";
 import { dateDe, eur, monthRange, todayIso } from "../lib/format";
@@ -13,14 +14,30 @@ const HELP = `🧾 *Kassenbeleg-Bot*
 Schick mir einfach ein *Foto* oder eine *PDF* eines Belegs – ich lese ihn aus, kategorisiere alle Artikel und lege ihn ab.
 💡 Beste Qualität: Foto *als Datei* senden (Büroklammer → Datei), dann komprimiert Telegram nicht.
 
+*Fragen stellen* – einfach schreiben, z. B.
+„Wie viel haben wir dieses Jahr für Kaffee ausgegeben?“
+„Wofür geben wir am meisten aus?“
+„Wann haben wir den Fernseher gekauft?“
+
 *Befehle*
+/frage <Frage> – Frage zu euren Ausgaben
 /suche <Begriff> – Belege finden (z. B. /suche Waschmaschine)
 /letzte – die letzten Belege
 /monat – Ausgaben im aktuellen Monat
 /garantie – bald ablaufende Garantien
 /id – deine Telegram-ID anzeigen
 
-Du kannst auch einfach einen Suchbegriff schreiben.`;
+Ein einzelnes Wort (z. B. „Waschmaschine“) wird als Suche behandelt.`;
+
+/** Sieht die Nachricht wie eine Frage aus (statt wie ein Suchbegriff)? */
+export function looksLikeQuestion(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  return (
+    t.endsWith("?") ||
+    /^(wie|was|wann|wo|wofür|wieviel|welche[rsnm]?|wer|zeig|liste|gib|ausgaben|in welchem|bei welche[mn]?|für was)\b/.test(t) ||
+    t.split(/\s+/).length >= 5
+  );
+}
 
 function receiptLink(id: string): string {
   return config.appUrl ? `${config.appUrl}/belege/${id}` : "";
@@ -104,6 +121,28 @@ export function createBot(): Bot | null {
     });
   };
 
+  const answer = async (ctx: Context, question: string) => {
+    if (question.trim().length < 3) return ctx.reply("Was möchtest du wissen? Beispiel: /frage Wie viel haben wir dieses Jahr für Kaffee ausgegeben?");
+    await ctx.replyWithChatAction("typing").catch(() => {});
+    // Telegram zeigt "schreibt …" nur 5 Sekunden – während die KI nachdenkt, wiederholen
+    const typing = setInterval(() => ctx.replyWithChatAction("typing").catch(() => {}), 4500);
+    try {
+      const a = await ask(question);
+      const kb = new InlineKeyboard();
+      a.lines
+        .filter((l) => l.receiptId)
+        .slice(0, 8)
+        .forEach((l, i) => kb.text(`📎 ${i + 1}. ${l.text.slice(0, 40)}`, `file:${l.receiptId}`).row());
+      await ctx.reply(answerText(a), { reply_markup: kb.inline_keyboard.length ? kb : undefined });
+    } catch (e) {
+      console.error("[telegram] Frage:", e);
+      await ctx.reply("❌ Die KI konnte die Frage gerade nicht beantworten. Versuch es gleich noch einmal oder formuliere sie anders.");
+    } finally {
+      clearInterval(typing);
+    }
+  };
+
+  bot.command(["frage", "ask"], (ctx) => answer(ctx, ctx.match));
   bot.command(["suche", "search"], (ctx) => search(ctx, ctx.match));
 
   bot.command("letzte", async (ctx) => {
@@ -170,7 +209,7 @@ export function createBot(): Bot | null {
 
   bot.on("message:text", (ctx) => {
     if (ctx.message.text.startsWith("/")) return ctx.reply(HELP, { parse_mode: "Markdown" });
-    return search(ctx, ctx.message.text);
+    return looksLikeQuestion(ctx.message.text) ? answer(ctx, ctx.message.text) : search(ctx, ctx.message.text);
   });
 
   bot.catch((err) => {
