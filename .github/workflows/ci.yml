@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Typprüfung, Tests & Build
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: kassenbeleg
+          POSTGRES_PASSWORD: kassenbeleg
+          POSTGRES_DB: kassenbeleg
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U kassenbeleg"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgres://kassenbeleg:kassenbeleg@localhost:5432/kassenbeleg
+      DATA_DIR: ${{ runner.temp }}/data
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: OCR-Werkzeuge installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-deu poppler-utils \
+            libheif-examples libheif-plugin-libde265
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run migrate
+      - run: npm test
+      - run: npm run selftest
+      - run: npm run build
+
+  docker:
+    name: Docker-Image & Start wie auf dem Homeserver
+    runs-on: ubuntu-24.04
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Konfiguration aus Vorlage
+        run: |
+          cp .env.example .env
+          sed -i 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci1234/' .env
+          echo "OLLAMA_AUTO_PULL=false" >> .env
+      - name: Image bauen
+        run: docker compose build app
+      - name: Datenbank und App starten
+        run: docker compose up -d --no-deps db app
+      - name: Auf App warten
+        run: |
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost:3000/api/health && exit 0
+            sleep 2
+          done
+          docker compose logs app
+          exit 1
+      - name: Seiten erreichbar
+        run: |
+          for p in / /belege /auswertung /garantie /kategorien /einstellungen; do
+            curl -fsS -o /dev/null -w "$p %{http_code}\n" "http://localhost:3000$p"
+          done
+      - name: Beleg hochladen (Dateirechte im Datenordner)
+        run: |
+          curl -fsS -F "file=@fixtures/bon.heic;type=image/heic" http://localhost:3000/api/upload | tee /dev/stderr | grep -q '"ok":true'
+          ls -R data/files | head
+      - name: Selbsttest im Container (Tesseract, PDF, HEIC)
+        run: docker compose run --rm --no-deps worker npm run selftest
+      - name: Logs bei Fehler
+        if: failure()
+        run: docker compose logs
+      - name: Aufräumen
+        if: always()
+        run: docker compose down -v

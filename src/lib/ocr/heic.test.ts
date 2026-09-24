@@ -15,7 +15,7 @@ const hasHeifConvert = (() => {
 })();
 
 // Echtes HEIC (HEVC), wie es ein iPhone liefert
-const heic = readFileSync(new URL("./fixtures/bon.heic", import.meta.url));
+const heic = readFileSync(new URL("../../../fixtures/bon.heic", import.meta.url));
 
 describe("HEIC", () => {
   it("wird am Dateiinhalt erkannt", () => {

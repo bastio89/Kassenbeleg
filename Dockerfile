@@ -28,6 +28,7 @@ COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
 COPY package.json next.config.mjs tsconfig.json ./
 COPY migrations ./migrations
+COPY fixtures ./fixtures
 COPY src ./src
 EXPOSE 3000
 CMD ["sh", "-c", "node_modules/.bin/tsx src/scripts/migrate.ts && node_modules/.bin/next start"]
