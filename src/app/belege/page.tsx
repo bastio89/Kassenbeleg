@@ -87,7 +87,7 @@ export default async function ReceiptsPage({ searchParams }: PageProps<"/belege"
           <label className="field" style={{ justifyContent: "flex-end" }}>
             <span className="row" style={{ minHeight: 40 }}>
               <input type="checkbox" name="pruefen" value="1" defaultChecked={review} style={{ minHeight: 0 }} />
-              Nur zu prüfende
+              Nur zu prüfende & Duplikate
             </span>
           </label>
         </div>

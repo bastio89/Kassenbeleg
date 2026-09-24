@@ -3,6 +3,7 @@ import { categorizeItems, extractReceipt, type AiContext } from "./ai";
 import type { Extraction } from "./ai/types";
 import { buildLookup, getCategories, resolveCategoryPath } from "./categories";
 import { effectiveMode, config } from "./config";
+import { checkDuplicate } from "./duplicates";
 import { sql } from "./db";
 import { makePreview, prepareForVision } from "./ocr/image";
 import { pdfText, pdfToImages } from "./ocr/pdf";
@@ -249,6 +250,9 @@ export async function processReceipt(receipt: ReceiptRow): Promise<void> {
                 ${it.categoryId}, ${it.categorySource}, ${it.warrantyMonths})`;
     }
   });
+
+  // Derselbe Bon schon einmal erfasst? Dann nicht doppelt zählen.
+  await checkDuplicate(receipt.id);
 }
 
 /** Entfernt einen Beleg inkl. Dateien. */

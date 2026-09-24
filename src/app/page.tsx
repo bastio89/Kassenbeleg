@@ -31,11 +31,17 @@ export default async function Home() {
           ⚙️ {status.pending + status.processing} Beleg(e) werden gerade ausgewertet …
         </div>
       )}
-      {(status.failed > 0 || status.review > 0) && (
+      {(status.failed > 0 || status.review > 0 || status.duplicates > 0) && (
         <Link href="/belege?pruefen=1" className="alert" style={{ display: "block" }}>
-          ⚠️ {status.failed > 0 && `${status.failed} fehlgeschlagen`}
-          {status.failed > 0 && status.review > 0 && " · "}
-          {status.review > 0 && `${status.review} zum Prüfen`} – ansehen →
+          ⚠️{" "}
+          {[
+            status.failed > 0 && `${status.failed} fehlgeschlagen`,
+            status.review > 0 && `${status.review} zum Prüfen`,
+            status.duplicates > 0 && `${status.duplicates} mögliche${status.duplicates === 1 ? "s" : ""} Duplikat${status.duplicates === 1 ? "" : "e"}`,
+          ]
+            .filter(Boolean)
+            .join(" · ")}{" "}
+          – ansehen →
         </Link>
       )}
 

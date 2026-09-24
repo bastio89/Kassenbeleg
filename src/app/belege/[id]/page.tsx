@@ -5,6 +5,7 @@ import {
   deleteItemAction,
   deleteReceiptAction,
   markReviewedAction,
+  notDuplicateAction,
   reprocessAction,
   updateItemAction,
   updateReceiptAction,
@@ -16,7 +17,7 @@ import { ItemCategorySelect, type CategoryOption } from "@/components/ItemCatego
 import { StatusBadge } from "@/components/ReceiptRow";
 import { buildLookup, buildTree, getCategories } from "@/lib/categories";
 import { dateDe, eur, fileSize, todayIso } from "@/lib/format";
-import { getReceipt } from "@/lib/queries";
+import { getReceipt, receiptSummary } from "@/lib/queries";
 
 const SOURCE: Record<string, string> = { web: "Web-App", telegram: "Telegram", share: "Teilen-Menü" };
 
@@ -25,6 +26,7 @@ export default async function ReceiptPage({ params }: PageProps<"/belege/[id]">)
   const [data, categories] = await Promise.all([getReceipt(id), getCategories()]);
   if (!data) notFound();
   const { receipt: r, items } = data;
+  const original = r.duplicate_of ? await receiptSummary(r.duplicate_of) : null;
   const tree = buildTree(categories);
   const lookup = buildLookup(categories);
   const options: CategoryOption[] = tree.flatMap<CategoryOption>((root) =>
@@ -57,7 +59,7 @@ export default async function ReceiptPage({ params }: PageProps<"/belege/[id]">)
             <span>{dateDe(r.purchase_date)}</span>
             {r.purchase_time && <span>{r.purchase_time} Uhr</span>}
             {r.total && <strong style={{ color: "var(--text)" }}>{eur(r.total, r.currency)}</strong>}
-            <StatusBadge status={r.status} review={r.needs_review} />
+            <StatusBadge status={r.status} review={r.needs_review} duplicate={Boolean(r.duplicate_of)} />
           </div>
         </div>
         <div className="row">
@@ -76,7 +78,27 @@ export default async function ReceiptPage({ params }: PageProps<"/belege/[id]">)
           </form>
         </div>
       )}
-      {r.status === "done" && r.needs_review && (
+      {original && (
+        <div className="alert">
+          <strong>Mögliches Duplikat:</strong> Dieser Beleg sieht aus wie{" "}
+          <Link href={`/belege/${original.id}`}>
+            {original.merchant ?? "Beleg"} vom {dateDe(original.purchase_date)} über {eur(original.total, original.currency)}
+          </Link>{" "}
+          (erfasst am {original.created_at.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}). Er wird in
+          Auswertungen und Garantien nicht mitgezählt.
+          <div className="row" style={{ marginTop: 8 }}>
+            <form action={deleteReceiptAction}>
+              <input type="hidden" name="id" value={r.id} />
+              <button className="btn small">🗑️ Duplikat löschen</button>
+            </form>
+            <form action={notDuplicateAction}>
+              <input type="hidden" name="id" value={r.id} />
+              <button className="btn small">Kein Duplikat – mitzählen</button>
+            </form>
+          </div>
+        </div>
+      )}
+      {r.status === "done" && r.needs_review && !original && (
         <div className="alert">
           <strong>Bitte prüfen:</strong> {r.review_reason}
           <form action={markReviewedAction} style={{ marginTop: 8 }}>

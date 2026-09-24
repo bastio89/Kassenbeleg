@@ -9,6 +9,7 @@ import { sql } from "@/lib/db";
 import { normalizeItemName, parseDate, parseNumber, parseTime } from "@/lib/parse";
 import { deleteReceipt } from "@/lib/processing";
 import { requeueReceipt } from "@/lib/receipts";
+import { markNotDuplicate } from "@/lib/duplicates";
 
 function str(fd: FormData, key: string): string | null {
   const v = fd.get(key);
@@ -63,6 +64,12 @@ export async function markReviewedAction(fd: FormData) {
 export async function reprocessAction(fd: FormData) {
   const id = uuid(fd);
   await requeueReceipt(id);
+  refresh(id);
+}
+
+export async function notDuplicateAction(fd: FormData) {
+  const id = uuid(fd);
+  await markNotDuplicate(id);
   refresh(id);
 }
 

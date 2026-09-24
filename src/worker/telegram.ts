@@ -3,6 +3,8 @@ import { config } from "../lib/config";
 import { sql } from "../lib/db";
 import { dateDe, eur, monthRange, todayIso } from "../lib/format";
 import { kpis, listReceipts, spendingByCategory, warranties } from "../lib/queries";
+import { markNotDuplicate } from "../lib/duplicates";
+import { deleteReceipt } from "../lib/processing";
 import { createReceipt } from "../lib/receipts";
 import { loadFile } from "../lib/storage";
 
@@ -153,6 +155,19 @@ export function createBot(): Bot | null {
     await ctx.replyWithDocument(new InputFile(data, name), { caption });
   });
 
+  bot.callbackQuery(/^dup_(del|keep):([0-9a-f-]{36})$/, async (ctx) => {
+    const [, action, id] = ctx.match;
+    if (action === "del") {
+      await deleteReceipt(id);
+      await ctx.answerCallbackQuery({ text: "Duplikat gelöscht" });
+      await ctx.editMessageText(`${ctx.callbackQuery.message?.text ?? ""}\n\n🗑️ Duplikat gelöscht.`).catch(() => {});
+    } else {
+      await markNotDuplicate(id);
+      await ctx.answerCallbackQuery({ text: "Wird mitgezählt" });
+      await ctx.editMessageText(`${ctx.callbackQuery.message?.text ?? ""}\n\n✅ Kein Duplikat – wird mitgezählt.`).catch(() => {});
+    }
+  });
+
   bot.on("message:text", (ctx) => {
     if (ctx.message.text.startsWith("/")) return ctx.reply(HELP, { parse_mode: "Markdown" });
     return search(ctx, ctx.message.text);
@@ -171,9 +186,13 @@ export async function notifyProcessed(bot: Bot, receiptId: string): Promise<void
   const [r] = await sql<
     { status: string; merchant: string | null; purchase_date: string | null; total: string | null; currency: string;
       error: string | null; needs_review: boolean; review_reason: string | null; telegram_chat_id: string | null;
-      telegram_message_id: number | null }[]
-  >`SELECT status, merchant, purchase_date::text, total::text, currency, error, needs_review, review_reason,
-           telegram_chat_id::text, telegram_message_id FROM receipts WHERE id = ${receiptId}`;
+      telegram_message_id: number | null; duplicate_of: string | null; original_source: string | null;
+      original_created: Date | null }[]
+  >`SELECT r.status, r.merchant, r.purchase_date::text, r.total::text, r.currency, r.error, r.needs_review,
+           r.review_reason, r.telegram_chat_id::text, r.telegram_message_id, r.duplicate_of,
+           o.source AS original_source, o.created_at AS original_created
+    FROM receipts r LEFT JOIN receipts o ON o.id = r.duplicate_of
+    WHERE r.id = ${receiptId}`;
   if (!r?.telegram_chat_id) return;
   const link = receiptLink(receiptId);
   let text: string;
@@ -197,8 +216,20 @@ export async function notifyProcessed(bot: Bot, receiptId: string): Promise<void
       (w ? `\n\n🛡️ ${w} Artikel mit Garantie erfasst` : "") +
       (r.needs_review ? `\n\n⚠️ Bitte prüfen: ${r.review_reason}` : "");
   }
+  let keyboard: InlineKeyboard | undefined;
+  if (r.status !== "failed" && r.duplicate_of) {
+    const when = r.original_created?.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" });
+    text =
+      `♊ Diesen Bon habe ich schon: ${r.merchant ?? "Beleg"} · ${dateDe(r.purchase_date)} · ${eur(r.total, r.currency)}` +
+      `\n(erfasst am ${when}${r.original_source === "telegram" ? " per Telegram" : ""})` +
+      `\n\nDas zweite Exemplar wird nicht doppelt gezählt.`;
+    keyboard = new InlineKeyboard()
+      .text("🗑️ Duplikat löschen", `dup_del:${receiptId}`)
+      .text("Kein Duplikat", `dup_keep:${receiptId}`);
+  }
   if (link) text += `\n\n${link}`;
   await bot.api.sendMessage(r.telegram_chat_id, text, {
+    reply_markup: keyboard,
     reply_parameters: r.telegram_message_id
       ? { message_id: r.telegram_message_id, allow_sending_without_reply: true }
       : undefined,

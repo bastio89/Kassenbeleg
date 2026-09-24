@@ -19,6 +19,7 @@ export interface ReceiptListItem {
   matched_items: string[] | null;
   categories: { name: string; icon: string | null; color: string | null }[] | null;
   error: string | null;
+  duplicate_of: string | null;
   source: string;
   uploaded_by: string | null;
   created_at: Date;
@@ -64,7 +65,7 @@ function whereClause(f: ReceiptFilter): PendingQuery<Row[]> {
   if (f.from) parts.push(sql`${EFFECTIVE_DATE} >= ${f.from}::date`);
   if (f.to) parts.push(sql`${EFFECTIVE_DATE} <= ${f.to}::date`);
   if (f.status) parts.push(sql`r.status = ${f.status}`);
-  if (f.review) parts.push(sql`(r.needs_review OR r.status = 'failed')`);
+  if (f.review) parts.push(sql`(r.needs_review OR r.status = 'failed' OR r.duplicate_of IS NOT NULL)`);
   return parts.reduce((acc, part) => sql`${acc} AND ${part}`);
 }
 
@@ -74,7 +75,7 @@ export async function listReceipts(f: ReceiptFilter = {}): Promise<{ rows: Recei
   const rows = await sql<ReceiptListItem[]>`
     SELECT r.id, r.status, r.merchant, r.purchase_date::text, ${EFFECTIVE_DATE}::text AS effective_date,
            r.total::text, r.currency, r.needs_review, r.preview_path, r.mime_type, r.error, r.source,
-           r.uploaded_by, r.created_at,
+           r.uploaded_by, r.created_at, r.duplicate_of,
            (SELECT count(*)::int FROM receipt_items i WHERE i.receipt_id = r.id) AS item_count,
            ${
              terms.length
@@ -119,6 +120,8 @@ export interface ReceiptDetail {
   ai_model: string | null;
   error: string | null;
   attempts: number;
+  duplicate_of: string | null;
+  duplicate_checked: boolean;
   processed_at: Date | null;
   created_at: Date;
 }
@@ -137,13 +140,20 @@ export interface ReceiptItemRow {
   notes: string | null;
 }
 
+/** Kurzinfo zum Original eines Duplikats (für Hinweis und Link). */
+export async function receiptSummary(id: string) {
+  const [r] = await sql<{ id: string; merchant: string | null; purchase_date: string | null; total: string | null; currency: string; source: string; created_at: Date }[]>`
+    SELECT id, merchant, purchase_date::text, total::text, currency, source, created_at FROM receipts WHERE id = ${id}`;
+  return r ?? null;
+}
+
 export async function getReceipt(id: string): Promise<{ receipt: ReceiptDetail; items: ReceiptItemRow[] } | null> {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
   const [receipt] = await sql<ReceiptDetail[]>`
     SELECT id, status, source, uploaded_by, original_filename, mime_type, file_size, preview_path, merchant,
            merchant_address, purchase_date::text, to_char(purchase_time, 'HH24:MI') AS purchase_time, total::text,
            currency, payment_method, raw_text, notes, needs_review, review_reason, ai_provider, ai_model, error,
-           attempts, processed_at, created_at
+           attempts, duplicate_of, duplicate_checked, processed_at, created_at
     FROM receipts WHERE id = ${id}`;
   if (!receipt) return null;
   const items = await sql<ReceiptItemRow[]>`
@@ -171,7 +181,7 @@ export async function kpis(range: Range) {
            count(i.id)::int AS items,
            count(DISTINCT lower(r.merchant))::int AS merchants
     FROM receipts r JOIN receipt_items i ON i.receipt_id = r.id
-    WHERE r.status = 'done' AND ${EFFECTIVE_DATE} BETWEEN ${range.from}::date AND ${range.to}::date`;
+    WHERE r.status = 'done' AND r.duplicate_of IS NULL AND ${EFFECTIVE_DATE} BETWEEN ${range.from}::date AND ${range.to}::date`;
   return {
     total: Number(row.total ?? 0),
     receipts: row.receipts,
@@ -199,7 +209,7 @@ export async function spendingByCategory(range: Range): Promise<CategorySum[]> {
     JOIN receipts r ON r.id = i.receipt_id
     JOIN categories c ON c.id = i.category_id
     JOIN categories root ON root.id = COALESCE(c.parent_id, c.id)
-    WHERE r.status = 'done' AND ${EFFECTIVE_DATE} BETWEEN ${range.from}::date AND ${range.to}::date
+    WHERE r.status = 'done' AND r.duplicate_of IS NULL AND ${EFFECTIVE_DATE} BETWEEN ${range.from}::date AND ${range.to}::date
     GROUP BY root.id, root.name, root.icon, root.color, c.id, c.name`;
   const map = new Map<number, CategorySum>();
   for (const r of rows) {
@@ -234,7 +244,7 @@ export async function monthlyTrend(months = 12): Promise<MonthlyRow[]> {
     )
     SELECT m.month, COALESCE(root.name, '') AS root_name, COALESCE(sum(i.total_price), 0)::text AS total
     FROM m
-    LEFT JOIN receipts r ON r.status = 'done' AND to_char(${EFFECTIVE_DATE}, 'YYYY-MM') = m.month
+    LEFT JOIN receipts r ON r.status = 'done' AND r.duplicate_of IS NULL AND to_char(${EFFECTIVE_DATE}, 'YYYY-MM') = m.month
     LEFT JOIN receipt_items i ON i.receipt_id = r.id
     LEFT JOIN categories c ON c.id = i.category_id
     LEFT JOIN categories root ON root.id = COALESCE(c.parent_id, c.id)
@@ -255,7 +265,7 @@ export async function topMerchants(range: Range, limit = 10) {
   const rows = await sql<{ merchant: string; receipts: number; total: string }[]>`
     SELECT COALESCE(r.merchant, 'Unbekannt') AS merchant, count(*)::int AS receipts, sum(r.total)::text AS total
     FROM receipts r
-    WHERE r.status = 'done' AND r.total IS NOT NULL
+    WHERE r.status = 'done' AND r.duplicate_of IS NULL AND r.total IS NOT NULL
       AND ${EFFECTIVE_DATE} BETWEEN ${range.from}::date AND ${range.to}::date
     GROUP BY COALESCE(r.merchant, 'Unbekannt')
     ORDER BY sum(r.total) DESC
@@ -267,7 +277,7 @@ export async function topItems(range: Range, limit = 10) {
   const rows = await sql<{ name: string; count: number; total: string }[]>`
     SELECT min(i.name) AS name, count(*)::int AS count, sum(i.total_price)::text AS total
     FROM receipt_items i JOIN receipts r ON r.id = i.receipt_id
-    WHERE r.status = 'done' AND i.total_price > 0
+    WHERE r.status = 'done' AND r.duplicate_of IS NULL AND i.total_price > 0
       AND ${EFFECTIVE_DATE} BETWEEN ${range.from}::date AND ${range.to}::date
     GROUP BY lower(i.name)
     ORDER BY sum(i.total_price) DESC
@@ -279,7 +289,7 @@ export async function spendingByWeekday(range: Range) {
   const rows = await sql<{ dow: number; total: string; receipts: number }[]>`
     SELECT extract(isodow FROM ${EFFECTIVE_DATE})::int AS dow, sum(r.total)::text AS total, count(*)::int AS receipts
     FROM receipts r
-    WHERE r.status = 'done' AND r.total IS NOT NULL
+    WHERE r.status = 'done' AND r.duplicate_of IS NULL AND r.total IS NOT NULL
       AND ${EFFECTIVE_DATE} BETWEEN ${range.from}::date AND ${range.to}::date
     GROUP BY 1 ORDER BY 1`;
   const names = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
@@ -293,14 +303,17 @@ export async function queueStatus() {
   const rows = await sql<{ status: string; count: number }[]>`
     SELECT status, count(*)::int AS count FROM receipts GROUP BY status`;
   const s = Object.fromEntries(rows.map((r) => [r.status, r.count])) as Record<string, number>;
-  const [{ review }] = await sql<{ review: number }[]>`
-    SELECT count(*)::int AS review FROM receipts WHERE needs_review AND status = 'done'`;
+  const [{ review, duplicates }] = await sql<{ review: number; duplicates: number }[]>`
+    SELECT count(*) FILTER (WHERE needs_review AND duplicate_of IS NULL)::int AS review,
+           count(*) FILTER (WHERE duplicate_of IS NOT NULL)::int AS duplicates
+    FROM receipts WHERE status = 'done'`;
   return {
     pending: s.pending ?? 0,
     processing: s.processing ?? 0,
     done: s.done ?? 0,
     failed: s.failed ?? 0,
     review,
+    duplicates,
   };
 }
 
@@ -366,6 +379,6 @@ export async function exportRows(range: Range) {
     JOIN receipts r ON r.id = i.receipt_id
     LEFT JOIN categories c ON c.id = i.category_id
     LEFT JOIN categories root ON root.id = COALESCE(c.parent_id, c.id)
-    WHERE r.status = 'done' AND ${EFFECTIVE_DATE} BETWEEN ${range.from}::date AND ${range.to}::date
+    WHERE r.status = 'done' AND r.duplicate_of IS NULL AND ${EFFECTIVE_DATE} BETWEEN ${range.from}::date AND ${range.to}::date
     ORDER BY 1, r.id, i.position`;
 }

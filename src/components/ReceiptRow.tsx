@@ -2,7 +2,8 @@ import Link from "next/link";
 import { dateDe, eur } from "@/lib/format";
 import type { ReceiptListItem } from "@/lib/queries";
 
-export function StatusBadge({ status, review }: { status: string; review?: boolean }) {
+export function StatusBadge({ status, review, duplicate }: { status: string; review?: boolean; duplicate?: boolean }) {
+  if (duplicate) return <span className="badge warn">Duplikat</span>;
   if (status === "pending") return <span className="badge">⏳ Wartet</span>;
   if (status === "processing") return <span className="badge">⚙️ Wird ausgewertet</span>;
   if (status === "failed") return <span className="badge bad">⚠️ Fehlgeschlagen</span>;
@@ -27,7 +28,7 @@ export function ReceiptRow({ r }: { r: ReceiptListItem }) {
         <div className="meta">
           <span>{dateDe(r.effective_date)}</span>
           {r.item_count > 0 && <span>· {r.item_count} Artikel</span>}
-          <StatusBadge status={r.status} review={r.needs_review} />
+          <StatusBadge status={r.status} review={r.needs_review} duplicate={Boolean(r.duplicate_of)} />
           {cats.slice(0, 3).map((c) => (
             <span key={c.name} title={c.name} aria-label={c.name}>
               {c.icon}

@@ -92,6 +92,9 @@ export default async function SettingsPage() {
           <Link href="/belege?pruefen=1" className="badge warn">
             {queue.review} zu prüfen
           </Link>
+          <Link href="/belege?pruefen=1" className="badge warn">
+            {queue.duplicates} Duplikate
+          </Link>
           <Link href="/belege?pruefen=1" className="badge bad">
             {queue.failed} fehlgeschlagen
           </Link>
