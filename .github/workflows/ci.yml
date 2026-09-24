@@ -84,13 +84,14 @@ jobs:
           cat backups/status.json
           grep -q '"status":"ok"' backups/status.json
           grep -q '"offsite":true' backups/status.json
-          ls -la backups offsite/kassenbeleg
+          # Container schreiben als root – Kontrolle daher mit sudo
+          sudo ls -la backups offsite/kassenbeleg
       - name: Wiederherstellung wie in der README
         run: |
           docker compose run --rm --no-deps -v ./restore:/restore --entrypoint restic backup restore latest --target /restore
-          diff -r data/files restore/data/files
-          ls restore/backups/kassenbeleg-*.sql.gz
-          gunzip -c $(ls restore/backups/kassenbeleg-*.sql.gz | tail -1) | grep -q "CREATE TABLE public.receipts"
+          sudo diff -r data/files restore/data/files
+          dump=$(sudo sh -c 'ls restore/backups/kassenbeleg-*.sql.gz' | tail -1)
+          sudo gunzip -c "$dump" | grep -q "CREATE TABLE public.receipts"
           echo "Wiederherstellung vollständig"
       - name: Sicherungsstatus in der App
         run: curl -fsS http://localhost:3000/einstellungen | grep -q "verschlüsselt (restic)"
