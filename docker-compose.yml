@@ -1,0 +1,102 @@
+# Kassenbelege – komplette Installation für den Homeserver
+#   1. cp .env.example .env   (und anpassen)
+#   2. docker compose up -d
+#   3. http://<server>:3000 öffnen
+#
+# Alle Daten liegen im Ordner ./data (Datenbank, Originalbelege) – diesen Ordner sichern!
+
+x-app: &app
+  build: .
+  image: kassenbeleg:latest
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    DATABASE_URL: postgres://kassenbeleg:${POSTGRES_PASSWORD:-kassenbeleg}@db:5432/kassenbeleg
+    OLLAMA_URL: http://ollama:11434
+    DATA_DIR: /data
+  volumes:
+    - ./data/files:/data/files
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  app:
+    <<: *app
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    mem_limit: 512m
+
+  worker:
+    <<: *app
+    command: ["node_modules/.bin/tsx", "src/worker/index.ts"]
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    mem_limit: 768m
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kassenbeleg
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kassenbeleg}
+      POSTGRES_DB: kassenbeleg
+      TZ: Europe/Berlin
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kassenbeleg -d kassenbeleg"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Sparsam für Rechner mit 8 GB RAM
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=40"]
+
+  # Lokales KI-Modell. Wer nur OpenRouter nutzt, kann diesen Dienst weglassen.
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ./data/ollama:/root/.ollama
+    environment:
+      # Nur ein Modell und eine Anfrage gleichzeitig – wichtig bei 8 GB RAM
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_KEEP_ALIVE: "5m"
+    # Mit NVIDIA-Grafikkarte (nvidia-container-toolkit installiert) auskommentieren:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # Tägliche Datenbank-Sicherung nach ./backups (14 Tage aufbewahrt)
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-kassenbeleg}
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint:
+      - sh
+      - -c
+      - |
+        while true; do
+          pg_dump -h db -U kassenbeleg kassenbeleg | gzip > /backups/kassenbeleg-$$(date +%F).sql.gz
+          find /backups -name 'kassenbeleg-*.sql.gz' -mtime +14 -delete
+          sleep 86400
+        done
